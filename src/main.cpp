@@ -57,10 +57,21 @@ void connectWiFi() {
 }
 
 void connectMQTT() {
+    // Generate a unique Client ID using MAC address
+    String mac = WiFi.macAddress();
+    String uniqueClientID = "XIAO_C3_" + mac.substring(mac.length() - 5);
+    uniqueClientID.replace(":", "");
+
     while (!mqttClient.connected()) {
-        Serial.print("Attempting MQTT connection...");
-        if (mqttClient.connect(CLIENT_ID, MQTT_USER, MQTT_PASS)) {
-            Serial.println("Connected to RabbitMQ!");
+        Serial.print("Attempting MQTT connection as ");
+        Serial.print(uniqueClientID);
+        Serial.print("...");
+        
+        // Increase keepalive to 60 seconds
+        mqttClient.setKeepAlive(60);
+
+        if (mqttClient.connect(uniqueClientID.c_str(), MQTT_USER, MQTT_PASS)) {
+            Serial.println("Connected!");
         } else {
             Serial.printf("failed, rc=%d. Retrying in 5s...\n", mqttClient.state());
             delay(5000);
