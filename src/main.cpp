@@ -3,17 +3,19 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include "esp_wifi.h"
 
 // --- Configuration ---
-const char* WIFI_SSID = "METRO POLITAN 2_5G";
+const char* WIFI_SSID = "METRO POLITAN 2";
 const char* WIFI_PASS = "905085ea";
+const int wifi_channel = 6; 
 
 // Use IPAddress to avoid DNS lookup issues
 IPAddress MQTT_SERVER(192, 168, 110, 6); 
 const int MQTT_PORT = 1883;
 const char* MQTT_USER = "guest";
 const char* MQTT_PASS = "guest";
-const char* MQTT_TOPIC = "XIAO_C3/data";
+const char* MQTT_TOPIC = "routing.key";
 const char* CLIENT_ID = "XIAO_ESP32C3_01";
 
 // --- Objects ---
@@ -42,19 +44,52 @@ String getTimestamp() {
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
     return String(buffer);
 }
-
 void connectWiFi() {
-    Serial.printf("\nConnecting to %s", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+    Serial.println("\n--- Scanning for WiFi Networks ---");
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+
+    int n = WiFi.scanNetworks();
+    if (n == 0) {
+        Serial.println("No networks found.");
+    } else {
+        Serial.printf("%d networks found:\n", n);
+        for (int i = 0; i < n; ++i) {
+            Serial.printf("%d: %s (RSSI: %d, Ch: %d)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i));
+        }
     }
+    Serial.println("----------------------------------\n");
+
+    Serial.println("Channel drifted! Re-setting...");
+    esp_wifi_set_promiscuous(true);
+    esp_wifi_set_channel(wifi_channel, WIFI_SECOND_CHAN_NONE); // set manually channel 
+    esp_wifi_set_promiscuous(false);
+
+    Serial.printf("Attempting to connect to: %s", WIFI_SSID);
+    WiFi.setSleep(false);
+    WiFi.begin(WIFI_SSID, WIFI_PASS, wifi_channel);
+
+    int retry_count = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+        retry_count++;
+
+        if (retry_count > 15) { 
+            Serial.println("\n❌ Connection Failed. Look at the scan list above!");
+            Serial.println("Is your SSID in the list? If not, ESP32 cannot see it.");
+            delay(5000);
+            ESP.restart();
+        }
+    }
+
     Serial.println("\n✅ WiFi Connected!");
     Serial.print("Local IP: "); Serial.println(WiFi.localIP());
     Serial.print("Gateway:  "); Serial.println(WiFi.gatewayIP());
     Serial.print("Subnet:   "); Serial.println(WiFi.subnetMask());
 }
+
 
 void connectMQTT() {
     // Generate a unique Client ID using MAC address
